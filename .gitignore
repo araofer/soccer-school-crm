@@ -1,0 +1,39 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies and Build Outputs
+node_modules/
+dist/
+dist-ssr/
+
+# Environment Variables & Secrets
+.env
+.env*.local
+
+# Real SQLite Database
+soccer_school_crm.db
+*.db
+*.db-journal
+
+# User Uploaded Documents (Preserving .gitkeep files)
+server/uploads/*
+!server/uploads/notes/
+server/uploads/notes/*
+!server/uploads/notes/.gitkeep
+
+# Editor and System files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
