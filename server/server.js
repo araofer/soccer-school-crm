@@ -4,6 +4,7 @@ import multer from 'multer'
 import path from 'node:path'
 import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import bcrypt from 'bcryptjs'
 import { all, get, run, initializeDatabase } from './db.js'
 
 const app = express()
@@ -43,16 +44,32 @@ app.get('/api/health', (_req, res) => {
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body
 
+  if (!email || !password) {
+    return res.status(401).json({ message: 'Credenciais inválidas' })
+  }
+
   const professional = await get(
-    'SELECT id, name, email, role, specialty FROM professionals WHERE email = ? AND password = ?',
-    [email, password],
+    'SELECT id, name, email, password, role, specialty, status FROM professionals WHERE email = ?',
+    [email],
   )
 
   if (!professional) {
     return res.status(401).json({ message: 'Credenciais inválidas' })
   }
 
-  return res.json(professional)
+  const isPasswordValid = await bcrypt.compare(password, professional.password)
+  if (!isPasswordValid) {
+    return res.status(401).json({ message: 'Credenciais inválidas' })
+  }
+
+  return res.json({
+    id: professional.id,
+    name: professional.name,
+    email: professional.email,
+    role: professional.role,
+    specialty: professional.specialty,
+    status: professional.status,
+  })
 })
 
 app.get('/api/professionals', async (_req, res) => {

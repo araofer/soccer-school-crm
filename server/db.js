@@ -1,4 +1,5 @@
 import sqlite3 from 'sqlite3'
+import bcrypt from 'bcryptjs'
 
 const db = new sqlite3.Database('./soccer_school_crm.db')
 
@@ -159,19 +160,19 @@ const initializeDatabase = async () => {
   if (countProfessionals.count === 0) {
     await run(
       `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p1', 'Maya Costa', 'admin@clinic.com', 'admin123', 'admin', 'Administrador', 'Ativo'],
+      ['p1', 'Maya Costa', 'admin@clinic.com', await bcrypt.hash('admin123', 10), 'admin', 'Administrador', 'Ativo'],
     )
     await run(
       `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p2', 'Dr. Lucas Pereira', 'psicologo@clinic.com', 'psico123', 'psychologist', 'Psicólogo', 'Ativo'],
+      ['p2', 'Dr. Lucas Pereira', 'psicologo@clinic.com', await bcrypt.hash('psico123', 10), 'psychologist', 'Psicólogo', 'Ativo'],
     )
     await run(
       `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p3', 'Dra. Ana Ribeiro', 'nutri@clinic.com', 'nutri123', 'nutritionist', 'Nutricionista', 'Ativo'],
+      ['p3', 'Dra. Ana Ribeiro', 'nutri@clinic.com', await bcrypt.hash('nutri123', 10), 'nutritionist', 'Nutricionista', 'Ativo'],
     )
     await run(
       `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p4', 'Carla Mendes', 'pedagogo@clinic.com', 'peda123', 'pedagogue', 'Pedagoga', 'Ativo'],
+      ['p4', 'Carla Mendes', 'pedagogo@clinic.com', await bcrypt.hash('peda123', 10), 'pedagogue', 'Pedagoga', 'Ativo'],
     )
   }
 
@@ -239,6 +240,18 @@ const initializeDatabase = async () => {
     await run(`
       INSERT INTO note_versions (id, note_id, title, content, author_name, created_at) VALUES (?, ?, ?, ?, ?, ?)
     `, ['v1', 'n1', 'Acompanhamento emocional', 'Aluno demonstra confiança crescente durante treinos e melhora na interação com o grupo.', 'Dr. Lucas Pereira', new Date().toISOString()])
+  }
+
+  const existingProfessionals = await all('SELECT id, password FROM professionals')
+  for (const prof of existingProfessionals) {
+    const isBcrypt =
+      typeof prof.password === 'string' &&
+      /^\$2[abxy]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(prof.password)
+
+    if (!isBcrypt) {
+      const hashedPassword = await bcrypt.hash(prof.password, 10)
+      await run('UPDATE professionals SET password = ? WHERE id = ?', [hashedPassword, prof.id])
+    }
   }
 }
 
