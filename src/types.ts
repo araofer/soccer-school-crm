@@ -6,7 +6,24 @@ export interface Professional {
   id: string
   name: string
   email: string
+  role: Role
+  specialty: string
+  status?: 'Ativo' | 'Inativo'
+}
+
+export interface CreateProfessionalInput {
+  name: string
+  email: string
   password: string
+  role: Role
+  specialty: string
+  status?: 'Ativo' | 'Inativo'
+}
+
+export interface UpdateProfessionalInput {
+  name: string
+  email: string
+  password?: string
   role: Role
   specialty: string
   status?: 'Ativo' | 'Inativo'

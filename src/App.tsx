@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Route, Routes, useNavigate, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
@@ -10,7 +10,16 @@ import { StudentDetailPage } from './pages/StudentDetailPage'
 import { canAccessRoute } from './lib/rbac'
 import { api } from './lib/api'
 import { useAuth } from './context/AuthContext'
-import type { AdminSettings, AuthUser, Professional, Role, Student, StudentNote as StudentNoteType } from './types'
+import type {
+  AdminSettings,
+  AuthUser,
+  CreateProfessionalInput,
+  Professional,
+  Role,
+  Student,
+  StudentNote as StudentNoteType,
+  UpdateProfessionalInput,
+} from './types'
 
 const DEFAULT_SETTINGS: AdminSettings = {
   schoolName: 'Soccer School Clinic',
@@ -24,15 +33,24 @@ const DEFAULT_SETTINGS: AdminSettings = {
 }
 
 function App() {
-  const { user, setUser, updateUser, logout } = useAuth()
+  const { user, isLoading, setUser, updateUser, logout } = useAuth()
+
   const [professionalsState, setProfessionalsState] = useState<Professional[]>([])
   const [studentsState, setStudentsState] = useState<Student[]>([])
   const [settingsState, setSettingsState] = useState<AdminSettings>(DEFAULT_SETTINGS)
   const [notes, setNotes] = useState<StudentNoteType[]>([])
+
   const navigate = useNavigate()
   const location = useLocation()
+  const authenticatedUserId = user?.id
 
   useEffect(() => {
+    if (isLoading || !authenticatedUserId) {
+      return
+    }
+
+    let cancelled = false
+
     const loadData = async () => {
       const [professionals, students, settings] = await Promise.all([
         api.getProfessionals(),
@@ -40,30 +58,34 @@ function App() {
         api.getAdminSettings().catch(() => DEFAULT_SETTINGS),
       ])
 
+      if (cancelled) {
+        return
+      }
+
       setProfessionalsState(professionals)
       setStudentsState(students)
       setSettingsState(settings)
     }
 
     loadData().catch(() => {
+      if (cancelled) {
+        return
+      }
+
       setProfessionalsState([])
       setStudentsState([])
       setSettingsState(DEFAULT_SETTINGS)
     })
-  }, [])
 
-  useEffect(() => {
-    if (user) {
-      window.localStorage.setItem('soccer-school-user', JSON.stringify(user))
-      return
+    return () => {
+      cancelled = true
     }
-
-    window.localStorage.removeItem('soccer-school-user')
-  }, [user])
+  }, [authenticatedUserId, isLoading])
 
   const handleLogin = async (email: string, password: string) => {
     const userData = await api.login(email, password)
-    const nextUser = {
+
+    const nextUser: AuthUser = {
       id: userData.id,
       name: userData.name,
       email: userData.email,
@@ -71,63 +93,71 @@ function App() {
     }
 
     setUser(nextUser)
-    navigate('/dashboard')
+    navigate('/dashboard', { replace: true })
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
+
+    setProfessionalsState([])
+    setStudentsState([])
+    setSettingsState(DEFAULT_SETTINGS)
+    setNotes([])
+
+    navigate('/', { replace: true })
   }
 
-  const handleAddProfessional = async (payload: Omit<Professional, 'id'>) => {
+  const handleAddProfessional = async (payload: CreateProfessionalInput) => {
     const professional = await api.createProfessional(payload)
+
     setProfessionalsState((current) => [...current, professional])
   }
 
-  const handleUpdateProfessional = async (professionalId: string, payload: Omit<Professional, 'id'>) => {
+  const handleUpdateProfessional = async (
+    professionalId: string,
+    payload: UpdateProfessionalInput,
+  ) => {
     const professional = await api.updateProfessional(professionalId, payload)
+
     setProfessionalsState((current) =>
-      current.map((item) =>
-        item.id === professionalId
-          ? professional ?? { ...item, ...payload, id: professionalId }
-          : item,
-      ),
+      current.map((item) => (item.id === professionalId ? professional : item)),
     )
   }
 
   const handleDeleteProfessional = async (professionalId: string) => {
     await api.deleteProfessional(professionalId)
-    setProfessionalsState((current) => current.filter((item) => item.id !== professionalId))
+
+    setProfessionalsState((current) =>
+      current.filter((item) => item.id !== professionalId),
+    )
   }
 
-  const handleUpdateCurrentUser = async (payload: Pick<AuthUser, 'name' | 'email'>) => {
+  const handleUpdateCurrentUser = async (
+    payload: Pick<AuthUser, 'name' | 'email'>,
+  ) => {
     if (!user) {
       return
     }
 
-    const currentProfessional = professionalsState.find((professional) => professional.id === user.id)
+    const currentProfessional = professionalsState.find(
+      (professional) => professional.id === user.id,
+    )
 
-    let professional = currentProfessional ? {
-      ...currentProfessional,
+    if (!currentProfessional) {
+      return
+    }
+
+    const professional = await api.updateProfessional(user.id, {
       name: payload.name,
       email: payload.email,
-    } : null
+      role: currentProfessional.role,
+      specialty: currentProfessional.specialty,
+      status: currentProfessional.status ?? 'Ativo',
+    })
 
-    if (currentProfessional) {
-      professional = await api.updateProfessional(user.id, {
-        name: payload.name,
-        email: payload.email,
-        password: currentProfessional.password,
-        role: currentProfessional.role,
-        specialty: currentProfessional.specialty,
-        status: currentProfessional.status ?? 'Ativo',
-      })
-    }
-
-    if (professional) {
-      setProfessionalsState((current) =>
-        current.map((item) => (item.id === user.id ? professional : item)),
-      )
-    }
+    setProfessionalsState((current) =>
+      current.map((item) => (item.id === user.id ? professional : item)),
+    )
 
     updateUser(payload)
   }
@@ -142,8 +172,12 @@ function App() {
     setStudentsState((current) => [...current, student])
   }
 
-  const handleUpdateStudent = async (studentId: string, payload: Omit<Student, 'id'>) => {
+  const handleUpdateStudent = async (
+    studentId: string,
+    payload: Omit<Student, 'id'>,
+  ) => {
     const student = await api.updateStudent(studentId, payload)
+
     setStudentsState((current) =>
       current.map((item) =>
         item.id === studentId
@@ -183,11 +217,19 @@ function App() {
 
   const handleUpdateNote = async (
     noteId: string,
-    payload: { title: string; category?: string; content: string; authorName: string },
+    payload: {
+      title: string
+      category?: string
+      content: string
+      authorName: string
+    },
   ) => {
     const updatedNote = await api.updateNote(noteId, payload)
+
     setNotes((current) =>
-      current.map((item) => (item.id === noteId ? { ...item, ...updatedNote } : item)),
+      current.map((item) =>
+        item.id === noteId ? { ...item, ...updatedNote } : item,
+      ),
     )
   }
 
@@ -198,6 +240,7 @@ function App() {
 
   const handleDeleteDocument = async (docId: string) => {
     await api.deleteDocument(docId)
+
     setNotes((current) =>
       current.map((note) => ({
         ...note,
@@ -206,29 +249,70 @@ function App() {
     )
   }
 
-  const handleSelectStudent = (studentId: string, section?: 'profile' | 'notes') => {
-    const targetUrl = `/students/${studentId}${section === 'notes' ? '?tab=notes#notes' : ''}`
+  const handleSelectStudent = (
+    studentId: string,
+    section?: 'profile' | 'notes',
+  ) => {
+    const targetUrl = `/students/${studentId}${
+      section === 'notes' ? '?tab=notes#notes' : ''
+    }`
+
     navigate(targetUrl)
   }
 
-  const studentById = (studentId: string) => studentsState.find((student) => student.id === studentId)
+  const studentById = (studentId: string) =>
+    studentsState.find((student) => student.id === studentId)
 
   useEffect(() => {
+    if (!authenticatedUserId) {
+      setNotes([])
+      return
+    }
+
+    if (studentsState.length === 0) {
+      setNotes([])
+      return
+    }
+
+    let cancelled = false
+
     const loadNotes = async () => {
       const studentIds = studentsState.map((student) => student.id)
-      const noteCollections = await Promise.all(studentIds.map((id) => api.getNotes(id)))
+      const noteCollections = await Promise.all(
+        studentIds.map((id) => api.getNotes(id)),
+      )
+
+      if (cancelled) {
+        return
+      }
+
       const levelledNotes = noteCollections.flat().map((note) => ({
         ...note,
         date: note.createdAt ?? note.date,
         studentId: note.studentId,
       }))
+
       setNotes(levelledNotes)
     }
 
-    if (studentsState.length > 0) {
-      loadNotes().catch(() => setNotes([]))
+    loadNotes().catch(() => {
+      if (!cancelled) {
+        setNotes([])
+      }
+    })
+
+    return () => {
+      cancelled = true
     }
-  }, [studentsState])
+  }, [authenticatedUserId, studentsState])
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="text-sm font-medium text-slate-500">Carregando sessão...</p>
+      </div>
+    )
+  }
 
   if (!user) {
     return (
@@ -246,7 +330,12 @@ function App() {
   }
 
   return (
-    <Layout user={user} professionals={professionalsState} settings={settingsState} onLogout={handleLogout}>
+    <Layout
+      user={user}
+      professionals={professionalsState}
+      settings={settingsState}
+      onLogout={handleLogout}
+    >
       <Routes>
         <Route
           path="/dashboard"
@@ -259,6 +348,7 @@ function App() {
             />
           }
         />
+
         <Route
           path="/students"
           element={
@@ -268,6 +358,7 @@ function App() {
             />
           }
         />
+
         <Route
           path="/students/:id"
           element={
@@ -286,6 +377,7 @@ function App() {
             />
           }
         />
+
         <Route
           path="/professionals"
           element={
@@ -297,6 +389,7 @@ function App() {
             />
           }
         />
+
         <Route
           path="/admin-console"
           element={
@@ -313,6 +406,7 @@ function App() {
             />
           }
         />
+
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Layout>

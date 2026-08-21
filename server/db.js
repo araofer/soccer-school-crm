@@ -156,25 +156,92 @@ const initializeDatabase = async () => {
     )
   `)
 
-  const countProfessionals = await get(`SELECT COUNT(*) AS count FROM professionals`)
-  if (countProfessionals.count === 0) {
-    await run(
-      `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p1', 'Maya Costa', 'admin@clinic.com', await bcrypt.hash('admin123', 10), 'admin', 'Administrador', 'Ativo'],
+  const countProfessionals = await get(
+  `SELECT COUNT(*) AS count FROM professionals`,
+)
+
+if (countProfessionals.count === 0) {
+  const seedPasswords = {
+    admin: process.env.SEED_ADMIN_PASSWORD,
+    psychologist: process.env.SEED_PSYCHOLOGIST_PASSWORD,
+    nutritionist: process.env.SEED_NUTRITIONIST_PASSWORD,
+    pedagogue: process.env.SEED_PEDAGOGUE_PASSWORD,
+  }
+
+  const missingSeedPasswords = Object.entries(seedPasswords)
+    .filter(
+      ([, password]) =>
+        typeof password !== 'string' ||
+        password.trim().length === 0,
     )
-    await run(
-      `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p2', 'Dr. Lucas Pereira', 'psicologo@clinic.com', await bcrypt.hash('psico123', 10), 'psychologist', 'Psicólogo', 'Ativo'],
-    )
-    await run(
-      `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p3', 'Dra. Ana Ribeiro', 'nutri@clinic.com', await bcrypt.hash('nutri123', 10), 'nutritionist', 'Nutricionista', 'Ativo'],
-    )
-    await run(
-      `INSERT INTO professionals (id, name, email, password, role, specialty, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      ['p4', 'Carla Mendes', 'pedagogo@clinic.com', await bcrypt.hash('peda123', 10), 'pedagogue', 'Pedagoga', 'Ativo'],
+    .map(([name]) => name)
+
+  if (missingSeedPasswords.length > 0) {
+    throw new Error(
+      `Senhas de seed não configuradas: ${missingSeedPasswords.join(', ')}`,
     )
   }
+
+  await run(
+    `INSERT INTO professionals
+      (id, name, email, password, role, specialty, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      'p1',
+      'Maya Costa',
+      'admin@clinic.com',
+      await bcrypt.hash(seedPasswords.admin, 10),
+      'admin',
+      'Administrador',
+      'Ativo',
+    ],
+  )
+
+  await run(
+    `INSERT INTO professionals
+      (id, name, email, password, role, specialty, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      'p2',
+      'Dr. Lucas Pereira',
+      'psicologo@clinic.com',
+      await bcrypt.hash(seedPasswords.psychologist, 10),
+      'psychologist',
+      'Psicólogo',
+      'Ativo',
+    ],
+  )
+
+  await run(
+    `INSERT INTO professionals
+      (id, name, email, password, role, specialty, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      'p3',
+      'Dra. Ana Ribeiro',
+      'nutri@clinic.com',
+      await bcrypt.hash(seedPasswords.nutritionist, 10),
+      'nutritionist',
+      'Nutricionista',
+      'Ativo',
+    ],
+  )
+
+  await run(
+    `INSERT INTO professionals
+      (id, name, email, password, role, specialty, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      'p4',
+      'Carla Mendes',
+      'pedagogo@clinic.com',
+      await bcrypt.hash(seedPasswords.pedagogue, 10),
+      'pedagogue',
+      'Pedagoga',
+      'Ativo',
+    ],
+  )
+}
 
   const countAdminSettings = await get(`SELECT COUNT(*) AS count FROM admin_settings`)
   if (countAdminSettings.count === 0) {

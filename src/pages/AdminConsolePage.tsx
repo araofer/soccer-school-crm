@@ -21,7 +21,16 @@ import {
   X,
 } from 'lucide-react'
 
-import type { AdminSettings, AuthUser, Professional, Role, Student } from '../types'
+import type {
+  AdminSettings,
+  AuthUser,
+  CreateProfessionalInput,
+  Professional,
+  Role,
+  Student,
+  UpdateProfessionalInput,
+} from '../types'
+
 import { roleLabels } from '../lib/rbac'
 
 interface AdminConsolePageProps {
@@ -29,8 +38,11 @@ interface AdminConsolePageProps {
   professionals: Professional[]
   students: Student[]
   settings: AdminSettings
-  onAddProfessional: (payload: Omit<Professional, 'id'>) => Promise<void>
-  onUpdateProfessional: (professionalId: string, payload: Omit<Professional, 'id'>) => Promise<void>
+  onAddProfessional: (payload: CreateProfessionalInput) => Promise<void>
+onUpdateProfessional: (
+  professionalId: string,
+  payload: UpdateProfessionalInput,
+) => Promise<void>
   onDeleteProfessional: (professionalId: string) => Promise<void>
   onUpdateCurrentUser: (payload: Pick<AuthUser, 'name' | 'email'>) => Promise<void>
   onSaveSettings: (payload: AdminSettings) => Promise<void>
@@ -40,9 +52,18 @@ type ActiveTab = 'profile' | 'users' | 'branding' | 'preferences'
 
 type ProfileDraft = Pick<AuthUser, 'name' | 'email'>
 
+type ProfessionalDraft = {
+  name: string
+  email: string
+  password: string
+  role: Role
+  specialty: string
+  status: 'Ativo' | 'Inativo'
+}
+
 const initialCategoryOptions = ['U8', 'U10', 'U12', 'U14', 'U16', 'Sub-18']
 
-const createEmptyProfessionalDraft = (): Omit<Professional, 'id'> => ({
+const createEmptyProfessionalDraft = (): ProfessionalDraft => ({
   name: '',
   email: '',
   password: '',
@@ -121,7 +142,9 @@ export function AdminConsolePage({
   const [activeTab, setActiveTab] = useState<ActiveTab>('profile')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [draftUser, setDraftUser] = useState<Omit<Professional, 'id'>>(createEmptyProfessionalDraft())
+  const [draftUser, setDraftUser] = useState<ProfessionalDraft>(
+  createEmptyProfessionalDraft(),
+)
   const [profileDraft, setProfileDraft] = useState<ProfileDraft>({
     name: currentUser.name,
     email: currentUser.email,
@@ -160,50 +183,78 @@ export function AdminConsolePage({
   }
 
   const openEditModal = (row: Professional) => {
-    setEditingId(row.id)
-    setDraftUser({
-      name: row.name,
-      email: row.email,
-      password: row.password,
-      role: row.role,
-      specialty: row.specialty,
-      status: row.status ?? 'Ativo',
-    })
-    setIsModalOpen(true)
-  }
+  setEditingId(row.id)
 
-  const handleSubmitUser = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  setDraftUser({
+    name: row.name,
+    email: row.email,
+    password: '',
+    role: row.role,
+    specialty: row.specialty,
+    status: row.status ?? 'Ativo',
+  })
 
-    const normalizedDraft: Omit<Professional, 'id'> = {
-      ...draftUser,
-      specialty: draftUser.specialty.trim() || roleLabels[draftUser.role],
-      status: draftUser.status ?? 'Ativo',
+  setIsModalOpen(true)
+}
+
+  const handleSubmitUser = async (
+  event: React.FormEvent<HTMLFormElement>,
+) => {
+  event.preventDefault()
+
+  const specialty =
+    draftUser.specialty.trim() || roleLabels[draftUser.role]
+
+  if (editingId) {
+    const payload: UpdateProfessionalInput = {
+      name: draftUser.name,
+      email: draftUser.email,
+      role: draftUser.role,
+      specialty,
+      status: draftUser.status,
     }
 
-    if (editingId) {
-      await onUpdateProfessional(editingId, normalizedDraft)
-    } else {
-      await onAddProfessional(normalizedDraft)
+    if (draftUser.password.trim()) {
+      payload.password = draftUser.password
     }
 
-    setIsModalOpen(false)
+    await onUpdateProfessional(editingId, payload)
+  } else {
+    const payload: CreateProfessionalInput = {
+      name: draftUser.name,
+      email: draftUser.email,
+      password: draftUser.password,
+      role: draftUser.role,
+      specialty,
+      status: draftUser.status,
+    }
+
+    await onAddProfessional(payload)
   }
+
+  setDraftUser(createEmptyProfessionalDraft())
+  setEditingId(null)
+  setIsModalOpen(false)
+}
 
   const toggleUserStatus = async (userId: string) => {
-    const currentProfessional = professionals.find((row) => row.id === userId)
-    if (!currentProfessional) return
+  const currentProfessional = professionals.find(
+    (row) => row.id === userId,
+  )
 
-    await onUpdateProfessional(userId, {
-      name: currentProfessional.name,
-      email: currentProfessional.email,
-      password: currentProfessional.password,
-      role: currentProfessional.role,
-      specialty: currentProfessional.specialty,
-      status: (currentProfessional.status ?? 'Ativo') === 'Ativo' ? 'Inativo' : 'Ativo',
-    })
-  }
+  if (!currentProfessional) return
 
+  await onUpdateProfessional(userId, {
+    name: currentProfessional.name,
+    email: currentProfessional.email,
+    role: currentProfessional.role,
+    specialty: currentProfessional.specialty,
+    status:
+      (currentProfessional.status ?? 'Ativo') === 'Ativo'
+        ? 'Inativo'
+        : 'Ativo',
+  })
+}
   const removeUserAccess = async (userId: string) => {
     await onDeleteProfessional(userId)
   }
@@ -670,7 +721,24 @@ export function AdminConsolePage({
             <form onSubmit={handleSubmitUser} className="grid gap-3">
               <input value={draftUser.name} onChange={(event) => setDraftUser({ ...draftUser, name: event.target.value })} placeholder="Nome" className="rounded-2xl border border-slate-200 px-3 py-2" />
               <input value={draftUser.email} onChange={(event) => setDraftUser({ ...draftUser, email: event.target.value })} placeholder="E-mail" className="rounded-2xl border border-slate-200 px-3 py-2" />
-              <input type="password" value={draftUser.password} onChange={(event) => setDraftUser({ ...draftUser, password: event.target.value })} placeholder="Senha temporária" className="rounded-2xl border border-slate-200 px-3 py-2" />
+              <input
+  type="password"
+  value={draftUser.password}
+  onChange={(event) =>
+    setDraftUser({
+      ...draftUser,
+      password: event.target.value,
+    })
+  }
+  placeholder={
+    editingId
+      ? 'Nova senha (opcional)'
+      : 'Senha temporária'
+  }
+  required={!editingId}
+  autoComplete="new-password"
+  className="rounded-2xl border border-slate-200 px-3 py-2"
+/>
               <input value={draftUser.specialty} onChange={(event) => setDraftUser({ ...draftUser, specialty: event.target.value })} placeholder="Especialidade / Cargo" className="rounded-2xl border border-slate-200 px-3 py-2" />
               <select value={draftUser.role} onChange={(event) => setDraftUser({ ...draftUser, role: event.target.value as Role })} className="rounded-2xl border border-slate-200 px-3 py-2">
                 {Object.entries(roleLabels).map(([value, label]) => (

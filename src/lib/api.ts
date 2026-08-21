@@ -1,4 +1,14 @@
-import type { AdminSettings, NoteDocument, NoteHistoryVersion, Professional, Student, StudentNote } from '../types'
+import type {
+  AdminSettings,
+  AuthUser,
+  CreateProfessionalInput,
+  NoteDocument,
+  NoteHistoryVersion,
+  Professional,
+  Student,
+  StudentNote,
+  UpdateProfessionalInput,
+} from '../types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:3001/api'
 
@@ -11,13 +21,23 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
+    credentials: 'include',
     headers,
   })
 
   const text = await response.text()
 
   if (!response.ok) {
-    throw new Error(text || 'Erro na requisição')
+    let message = 'Erro na requisição'
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed?.message) {
+        message = parsed.message
+      }
+    } catch {
+      if (text) message = text
+    }
+    throw new Error(message)
   }
 
   if (!text) {
@@ -29,9 +49,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   login: (email: string, password: string) =>
-    request<{ id: string; name: string; email: string; role: Professional['role'] }>(`/login`, {
+    request<AuthUser>(`/login`, {
       method: 'POST',
       body: JSON.stringify({ email, password }),
+    }),
+
+  me: () => request<AuthUser>('/me'),
+
+  logout: () =>
+    request<{ ok: true; message?: string }>('/logout', {
+      method: 'POST',
     }),
 
   getProfessionals: () => request<Professional[]>('/professionals'),
@@ -44,17 +71,26 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  createProfessional: (payload: Omit<Professional, 'id'>) =>
-    request<Professional>('/professionals', {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, status: payload.status ?? 'Ativo' }),
+  createProfessional: (payload: CreateProfessionalInput) =>
+  request<Professional>('/professionals', {
+    method: 'POST',
+    body: JSON.stringify({
+      ...payload,
+      status: payload.status ?? 'Ativo',
     }),
+  }),
 
-  updateProfessional: (id: string, payload: Omit<Professional, 'id'>) =>
-    request<Professional>(`/professionals/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ ...payload, status: payload.status ?? 'Ativo' }),
+updateProfessional: (
+  id: string,
+  payload: UpdateProfessionalInput,
+) =>
+  request<Professional>(`/professionals/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      ...payload,
+      status: payload.status ?? 'Ativo',
     }),
+  }),
 
   deleteProfessional: (id: string) =>
     request<{ ok: true; id: string }>(`/professionals/${id}`, {

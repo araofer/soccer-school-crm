@@ -6,38 +6,48 @@ import {
   type ReactNode,
 } from "react";
 import type { AuthUser } from "../types";
+import { api } from "../lib/api";
 
 interface AuthContextType {
   user: AuthUser | null;
+  isLoading: boolean;
   setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
   updateUser: (payload: Pick<AuthUser, "name" | "email">) => void;
   login: (user: AuthUser) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    const cachedUser =
-      typeof window !== "undefined"
-        ? window.localStorage.getItem("soccer-school-user")
-        : null;
-    if (!cachedUser) return null;
-    try {
-      return JSON.parse(cachedUser) as AuthUser;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      window.localStorage.setItem("soccer-school-user", JSON.stringify(user));
-    } else {
-      window.localStorage.removeItem("soccer-school-user");
-    }
-  }, [user]);
+    let isMounted = true;
+
+    api
+      .me()
+      .then((userData) => {
+        if (isMounted) {
+          setUser(userData);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setUser(null);
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const updateUser = (payload: Pick<AuthUser, "name" | "email">) => {
     setUser((current) => (current ? { ...current, ...payload } : current));
@@ -47,12 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(userData);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch {
+      // Ignora erro de rede no logout para limpar estado local
+    }
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, updateUser, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, setUser, updateUser, login, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
